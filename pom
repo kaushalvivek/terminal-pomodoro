@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+
+import curses
+import math
+import subprocess
+import sys
+import time
+
+WORK = 25 * 60
+SHORT_BREAK = 5 * 60
+LONG_BREAK = 15 * 60
+ROUNDS = 4
+
+SEGS = {
+    '0': 'abcdef', '1': 'bc', '2': 'abdeg', '3': 'abcdg', '4': 'bcfg',
+    '5': 'acdfg', '6': 'acdefg', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg',
+}
+
+
+def glyph(d):
+    s = SEGS[d]
+    on, off = '━━━', '   '
+    return [
+        ' ' + (on if 'a' in s else off) + ' ',
+        ('┃' if 'f' in s else ' ') + '   ' + ('┃' if 'b' in s else ' '),
+        ' ' + (on if 'g' in s else off) + ' ',
+        ('┃' if 'e' in s else ' ') + '   ' + ('┃' if 'c' in s else ' '),
+        ' ' + (on if 'd' in s else off) + ' ',
+    ]
+
+
+def render_time(m, s, colon_on):
+    dot = '●' if colon_on else ' '
+    sep = ['   ', ' ' + dot + ' ', '   ', ' ' + dot + ' ', '   ']
+    parts = [glyph(str(m // 10)), glyph(str(m % 10)), sep,
+             glyph(str(s // 10)), glyph(str(s % 10))]
+    return ['  '.join(p[r] for p in parts) for r in range(5)]
+
+
+def progress(frac, width):
+    n = round(frac * width)
+    return '━' * n + '╌' * (width - n)
+
+
+def notify():
+    curses.beep()
+    curses.flash()
+    if sys.platform == 'darwin':
+        try:
+            subprocess.Popen(['afplay', '/System/Library/Sounds/Glass.aiff'],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+
+def run(scr):
+    curses.curs_set(0)
+    scr.timeout(200)
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_RED, -1)
+    curses.init_pair(2, curses.COLOR_GREEN, -1)
+    curses.init_pair(3, curses.COLOR_YELLOW, -1)
+    curses.init_pair(4, 8 if curses.COLORS > 8 else curses.COLOR_WHITE, -1)
+
+    done = 0
+    phase = 'focus'
+    total = WORK
+    left = float(WORK)
+    paused = False
+    tick = time.monotonic()
+
+    while True:
+        now = time.monotonic()
+        if not paused:
+            left -= now - tick
+        tick = now
+
+        if left <= 0 and not paused:
+            notify()
+            if phase == 'focus':
+                done += 1
+                phase = 'long_break' if done % ROUNDS == 0 else 'short_break'
+                total = LONG_BREAK if phase == 'long_break' else SHORT_BREAK
+            else:
+                phase = 'focus'
+                total = WORK
+            left = float(total)
+
+        key = scr.getch()
+        if key == ord('q'):
+            return
+        if key == ord(' '):
+            paused = not paused
+        if key == ord('r'):
+            left = float(total)
+        if key == ord('s'):
+            left = 0.0
+            continue
+
+        secs = max(0, math.ceil(left))
+        m, s = divmod(secs, 60)
+        colon_on = paused or int(now * 2) % 2 == 0
+
+        if paused:
+            attr = curses.color_pair(3) | curses.A_DIM
+        elif phase == 'focus':
+            attr = curses.color_pair(1) | curses.A_BOLD
+        else:
+            attr = curses.color_pair(2) | curses.A_BOLD
+
+        labels = {'focus': 'F O C U S', 'short_break': 'B R E A K', 'long_break': 'L O N G   B R E A K'}
+        label = labels[phase] + ('  ⏸' if paused else '')
+
+        lines = render_time(m, s, colon_on)
+        tw = len(lines[0])
+        frac = max(0.0, min(1.0, 1 - left / total))
+        bar = progress(frac, tw)
+
+        dots = []
+        pos = done % ROUNDS
+        for i in range(ROUNDS):
+            if i < pos:
+                dots.append('●')
+            elif i == pos and phase == 'focus':
+                dots.append('◐')
+            else:
+                dots.append('○')
+
+        scr.erase()
+        h, w = scr.getmaxyx()
+        y = max(0, (h - 14) // 2)
+
+        def put(row, text, a=0):
+            if 0 <= row < h:
+                x = max(0, (w - len(text)) // 2)
+                try:
+                    scr.addstr(row, x, text, a)
+                except curses.error:
+                    pass
+
+        put(y, label, attr | curses.A_BOLD)
+        y += 2
+        for line in lines:
+            put(y, line, attr)
+            y += 1
+        y += 1
+        put(y, bar, attr)
+        y += 2
+        put(y, '  '.join(dots), attr)
+        y += 2
+        put(y, 'space pause  ·  r reset  ·  s skip  ·  q quit', curses.color_pair(4))
+
+        scr.refresh()
+
+
+if __name__ == '__main__':
+    curses.wrapper(run)
