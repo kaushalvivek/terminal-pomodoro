@@ -95,8 +95,14 @@ def run(scr):
         if key == ord('r'):
             left = float(total)
         if key == ord('s'):
-            left = 0.0
-            continue
+            if phase == 'focus':
+                done += 1
+                phase = 'long_break' if done % ROUNDS == 0 else 'short_break'
+                total = LONG_BREAK if phase == 'long_break' else SHORT_BREAK
+            else:
+                phase = 'focus'
+                total = WORK
+            left = float(total)
 
         secs = max(0, math.ceil(left))
         m, s = divmod(secs, 60)
