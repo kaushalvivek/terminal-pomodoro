@@ -31,7 +31,7 @@ brew tap kaushalvivek/pom && brew install pom
 **Or just download it:**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/kaushalvivek/terminal-pomodoro/main/pom \
+curl -fsSL https://raw.githubusercontent.com/kaushalvivek/pom/main/pom \
   -o /usr/local/bin/pom && chmod +x /usr/local/bin/pom
 ```
 
