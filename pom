@@ -96,7 +96,6 @@ def run(scr):
             left = float(total)
         if key == ord('s'):
             left = 0.0
-            continue
 
         secs = max(0, math.ceil(left))
         m, s = divmod(secs, 60)
